@@ -1,0 +1,229 @@
+---
+title: "HongKongAirbnb"
+author: "Yonkee ZHENG"
+output: html_document
+---
+
+# Mining of HK Airbnb data
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(leaflet)
+```
+
+```{r}
+listing = read.csv('HongKongAirbnb.csv')
+head(listing)
+```
+
+Change the data type of last_review to Date in order to visualize easier later.
+```{r}
+listing$last_review = as.Date.character(listing$last_review)
+head(listing)
+```
+
+Check whether price and minimum night are non-negative.
+And to get the minimum total money, I multiply price and minimum_nights.
+```{r}
+table(listing$price <= 0)
+table(listing$minimum_nights<=0)
+listing$minimum_total_money = listing$price * listing$minimum_nights
+```
+
+Select the data where price is non-negative.
+```{r}
+listing1 = listing[!(listing$price<=0),]
+head(listing1)
+```
+
+```{r}
+summary(listing1)
+```
+
+The most important variable is price.
+Hence, I want to see the overall distribution of price.
+```{r}
+ggplot(listing1, aes(price)) +
+  geom_density(alpha = 0.5, fill = "blue") +
+  ggtitle("Distribution of price") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_vline(xintercept = mean(listing1$price), size = 0.5, linetype = 2)
+```
+
+Since the distribution is very skewed, it's better to use log transformation to gain a better insight.
+```{r}
+ggplot(listing1, aes(price)) +
+  geom_density(alpha = 0.5, fill = "blue") +
+  ggtitle("Log transformed distribution of price",
+          subtitle = expression("With" ~'log'[10] ~ "transformation of x-axis")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.title = element_text()) +
+  geom_vline(xintercept = mean(listing1$price), size = 0.5, linetype = 2) +
+  scale_x_log10()
+```
+
+Average Price of each Neighbourhood
+```{r}
+nbh.price = listing1 %>% group_by(neighbourhood_cleansed) %>% 
+  summarise(mean_price = mean(price)) %>% arrange(desc(mean_price))
+ggplot(nbh.price, aes(x = reorder(neighbourhood_cleansed, -mean_price), y = mean_price)) + 
+  geom_bar(stat="identity") + 
+  labs(title="Average Price of Rooms in each Neighbourhood") + 
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 90)) + 
+  xlab("") + ylab("Mean Price") +
+  geom_text(aes(label = round(mean_price,0)),vjust=-0.2, size=3)
+```
+
+The log transformed distribution of each neighbourhood.
+```{r}
+ggplot(listing1, aes(price)) +
+  geom_density(alpha = 0.5, fill = "blue") +
+  ggtitle("Log transformed distribution of price by neighbourhood",
+          subtitle = expression("With" ~'log'[10] ~ "transformation of x-axis")) +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_text(size = 7), axis.text.x = element_text(size = 7)) + 
+  geom_vline(data = nbh.price, aes(xintercept = mean_price), size = 0.2, linetype = 2) +
+  facet_wrap(~neighbourhood_cleansed) +
+  scale_x_log10() +
+  geom_text(data = nbh.price, y = 2, size = 2.5,
+            aes(x = mean_price, label = round(mean_price,0)))
+```
+
+Then analyze the price of rooms by different room types.
+```{r}
+ggplot(listing1, aes(x = room_type, y = price)) +
+  geom_boxplot(aes(fill = room_type)) + 
+  scale_y_log10() +
+  xlab("Room type") + ylab("Price") +
+  ggtitle("Boxplots of price by room types") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = mean(listing1$price), linetype = 2)
+```
+
+The entire home or apartment has the highest average price, while shared room has the lowest average price.
+
+Also analyze the minimum total price of each room type.
+```{r}
+ggplot(listing1, aes(x = room_type, y = minimum_total_money)) +
+  geom_boxplot(aes(fill = room_type)) + 
+  scale_y_log10() +
+  xlab("Room type") + ylab("Minimum total price") +
+  ggtitle("Boxplots of minimum total price by room types") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = mean(listing1$minimum_total_money), linetype = 2)
+```
+
+The entire home or apartment has the highest average minimum total price. Surprisingly, hotel room has the lowest average minimum total price.
+
+Comparison of mean price of each neighbourhood and room types.
+```{r}
+nbh.rt.price <- listing1 %>% group_by(neighbourhood_cleansed, room_type) %>% 
+  summarise(mean_price = mean(price))
+ggplot(nbh.rt.price, aes(x = reorder(neighbourhood_cleansed, -mean_price), 
+                         y = mean_price, fill = room_type)) + 
+  geom_bar(stat="identity",colour="black",position=position_dodge()) + 
+  labs(title="Comparison of mean price of each neighbourhood by different room types") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 90),
+        legend.position = c(0.9, 0.7), legend.title.align = 0.5) + 
+  xlab("") + ylab("Mean price") +
+  scale_fill_discrete(name = 'Room Type')
+```
+
+Find the relationship between the price and availability in a year.
+```{r}
+ggplot(listing1, aes(availability_365, price)) +
+  geom_point(alpha = 0.5, color = 'blue') +
+  xlab("Availability during year") + ylab("Price") +
+  ggtitle("Relationship between price and availability during a year",
+          subtitle = expression("With" ~'log'[10] ~ "transformation of y-axis")) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_y_log10()
+```
+
+There is not a clear pattern in this figure and hence no relationship between price and availability during a year.
+
+Find the relationship between minimum total money and number of reviews.
+```{r}
+ggplot(listing1, aes(minimum_total_money, number_of_reviews)) +
+  geom_point() + 
+  xlab('Minimum total money') +  ylab("Number of reviews") + 
+  ggtitle("Relationship between price and number of reviews",
+          subtitle = expression("With" ~'log'[10] ~ "transformation of y-axis")) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_log10() 
+```
+
+Find the relationship between the price and host response time.
+```{r}
+listing2 = listing1 %>% drop_na(host_response_rate)
+listing2$host_response_time_reorder = factor(listing2$host_response_time,
+  levels = c('within an hour', 'within a few hours','within a day','a few days or more'))
+ggplot(listing2, aes(x = host_response_time_reorder, y = price)) +
+  geom_boxplot(aes(fill = host_response_time)) + 
+  scale_y_log10() +
+  xlab("Host response time") + ylab("Price") +
+  ggtitle("Boxplots of price by host response time") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Relationship between price and accommodates.
+```{r}
+ggplot(listing1, aes(x = accommodates, y = price)) +
+  geom_point() + 
+  geom_smooth() +
+  scale_y_log10() +
+  xlab("Accommodates") + ylab("Price") +
+  ggtitle("Relationship between price and accommodates") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Number of rooms by neighbourhood.
+```{r}
+nbh.count = listing1 %>% group_by(neighbourhood_cleansed) %>% 
+  summarise(count = n()) %>% arrange(desc(count))
+ggplot(nbh.count, aes(x = reorder(neighbourhood_cleansed, -count), y = count)) + 
+  geom_bar(stat="identity") + 
+  labs(title="Number of rooms by neighbourhood") + 
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 90)) + 
+  xlab("") + 
+  geom_text(aes(label = count), vjust=-0.2, size=3)
+```
+
+Relationships between host response rate and review scores value.
+```{r}
+ggplot(listing1,aes(host_response_rate, review_scores_value)) +
+  geom_point() +
+  geom_smooth() +
+  ggtitle('Relationships between host response rate and review scores value') +
+  xlab('Host response rate') + ylab('Review scores value') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Relationship between host acceptance rate and review scores value.
+```{r}
+ggplot(listing1,aes(host_acceptance_rate, review_scores_value)) +
+  geom_point() +
+  geom_smooth() +
+  ggtitle('Relationships between host response rate and review scores value') +
+  xlab('Host acceptance rate') + ylab('Review scores value') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Leaflet map
+```{r}
+pal = colorFactor(palette = "plasma",
+                  listing1$neighbourhood_cleansed)
+leaflet(data = listing1) %>% addProviderTiles(providers$CartoDB.DarkMatterNoLabels) %>%
+  addCircleMarkers(~longitude, ~latitude, color = ~pal(neighbourhood_cleansed), 
+                   weight = 1, radius=1, fillOpacity = 0.1, opacity = 0.1,
+                   label = paste("ID:", listing1$id)) %>% 
+     addLegend("bottomright", pal = pal, values = ~neighbourhood_cleansed,
+     title = "Neighbourhood",
+     opacity = 1)
+```
