@@ -5,6 +5,7 @@ output: html_document
 ---
 
 # Mining of HK Airbnb data
+Data from http://insideairbnb.com/get-the-data
 ```{r}
 library(dplyr)
 library(ggplot2)
